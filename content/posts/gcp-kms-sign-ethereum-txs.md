@@ -1,6 +1,10 @@
 ---
 title: "Using GCP KMS to sign Ethereum trasactions"
 date: 2022-06-05T10:20:53+08:00
+author: LY Cheng
+authorTwitter: lyforever
+tags: [ "Web3", "GCP", "KMS", "Golang", "Ethereum" ]
+keywords: [ "web3", "gcp", "kms", "go", "secp256k1", "ethereum" ]
 draft: false
 ---
 
@@ -25,7 +29,7 @@ Now we can write some code to verify the signature from GCP KMS. Before you test
 
 When we retrieve the public key from GCP KMS, we need to use the DER-encoded ASN.1 to parse it.
 
-{{<highlight go>}}
+```go
 import (
     "encoding/asn1"
     "encoding/pem"
@@ -64,11 +68,11 @@ if err != nil {
 }
 
 publicKeyByte := asn1pubk.PublicKey.Bytes
-{{</highlight>}}
+```
 
 For the signature, we can directly use hash of keccak256 in the Sha256 field. Then use ASN.1 to get R and S Value.  
 
-{{<highlight go>}}
+```go
 type asn1EcSig struct {
     R asn1.RawValue
     S asn1.RawValue
@@ -97,11 +101,11 @@ if err != nil {
 
 rBytes := sigAsn1.R.Bytes
 sBytes := sigAsn1.S.Bytes
-{{</highlight>}}
+```
 
 The S Value from GCP KMS maybe over the half N of secp256k, we need to adjust it to match the Ethereum standard. Then adjust the length of R and S bytes to fit 32 bytes each. The final step is to calculate to V value by recovering the public key. The V value is zero if the recovered public key matches the public key from GCP KMS otherwise V value should be one. If you think about different chain for the V value, it will be adjusted by `WithSignature` when you given a different chain id into the `Signer`.
 
-{{<highlight go>}}
+```go
 var secp256k1N = crypto.S256().Params().N
 var secp256k1HalfN = new(big.Int).Div(secp256k1N, big.NewInt(2))
 func adjustSignatureLength(buffer []byte) []byte {
@@ -138,12 +142,12 @@ if hex.EncodeToString(recoveredPublicKeyBytes) != hex.EncodeToString(expectedPub
         log.Fatal(errors.New("can not reconstruct public key from sig"))
     }
 }
-{{</highlight>}}
+```
 
 ## Generate a raw transaction with signature
 Here is the full example to generate a ethereum transaction.
 
-{{<highlight go>}}
+```go
 func publicKeyBytesToAddress(publicKey []byte) common.Address {
     hash := crypto.Keccak256Hash(publicKey[1:])
     address := hash[12:]
@@ -177,7 +181,7 @@ ts := types.Transactions{signedTx}
 rawTxBytes, _ := rlp.EncodeToBytes(ts[0])
 rawTxHex := hex.EncodeToString(rawTxBytes)
 fmt.Printf("0x%s\n", rawTxHex)
-{{</highlight>}}
+```
 
 ## Reference
 

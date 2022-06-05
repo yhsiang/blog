@@ -1,5 +1,6 @@
 ---
-title: About
+title: About Me
+hideComments: true
 ---
 
 My name is Yuan-Hsiang Cheng or you can just call me LY (L-Y).
