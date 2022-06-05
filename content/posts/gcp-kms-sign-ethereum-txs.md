@@ -5,7 +5,7 @@ draft: false
 ---
 
 ## What is GCP KMS
-It's cloud key management service provided by GCP. It supports HSM (hardware security modules) and multiple algorithms to encrypt. You can read more from [here](https://cloud.google.com/security-key-management).
+It's a cloud key management service provided by GCP. It supports HSM (hardware security modules) and multiple algorithms to encrypt. You can read more from [here](https://cloud.google.com/security-key-management).
 
 ## Generate a private key
 First, we need to generate a private key on GCP KMS. Here are commands we can use to generate. you need to install `gcloud` first. Check [this link](https://cloud.google.com/sdk/docs/install-sdk) to install.
@@ -21,10 +21,9 @@ First, we need to generate a private key on GCP KMS. Here are commands we can us
 We choose `asymmetric-signing` to be our purpose and protection level is hsm. The most important thing is the algorithm is `ec-sign-secp256k1-sha256`. There is one question is why can we use `ec-sign-secp256k1-sha256` to generate a signature in Ethereum. In ethereum, people usually use `keccak256` as the hash algorithm not `sha256`. From this [comment](https://github.com/celo-org/optics-monorepo/discussions/598) we found in the github issues, you can still use `keccak256` to the `sha256` field.
 
 ## Verify the signature
-Now we can write some code to verify the signature from GCP KMS. Before you test it dont forget to generate a credential file from GCP. Check [here](https://cloud.google.com/docs/authentication/production) to pass credentials to environment variable.
+Now we can write some code to verify the signature from GCP KMS. Before you test it, don't forget to generate a key file from GCP. Check [here](https://cloud.google.com/docs/authentication/production) to pass credentials to environment variable.
 
 When we retrieve the public key from GCP KMS, we need to use the DER-encoded ASN.1 to parse it.
-
 
 {{<highlight go>}}
 import (
@@ -100,7 +99,7 @@ rBytes := sigAsn1.R.Bytes
 sBytes := sigAsn1.S.Bytes
 {{</highlight>}}
 
-The S Value from GCP KMS maybe over the half N of secp256k, we need to adjust it to match the Ethereum standard. Then adjust the length of R and S bytes to fit 32 bytes each. The final step is to calculate to V value by recovering the public key. The V value is zero if the recovered public key is match the public key from GCP KMS otherwise V value is one. If you think about different chain for the V value, it will be adjusted by `WithSignature` when you given a different chain id into the `Signer`.
+The S Value from GCP KMS maybe over the half N of secp256k, we need to adjust it to match the Ethereum standard. Then adjust the length of R and S bytes to fit 32 bytes each. The final step is to calculate to V value by recovering the public key. The V value is zero if the recovered public key matches the public key from GCP KMS otherwise V value should be one. If you think about different chain for the V value, it will be adjusted by `WithSignature` when you given a different chain id into the `Signer`.
 
 {{<highlight go>}}
 var secp256k1N = crypto.S256().Params().N
