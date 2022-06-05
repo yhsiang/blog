@@ -25,159 +25,160 @@ Now we can write some code to verify the signature from GCP KMS. Before you test
 
 When we retrieve the public key from GCP KMS, we need to use the DER-encoded ASN.1 to parse it.
 
-```go
-    import (
-        "encoding/asn1"
-        "encoding/pem"
 
-        kms "cloud.google.com/go/kms/apiv1"
-        kmspb "google.golang.org/genproto/googleapis/cloud/kms/v1"
-    )
+{{<highlight go>}}
+import (
+    "encoding/asn1"
+    "encoding/pem"
 
-    type asn1EcPublicKey struct {
-        EcPublicKeyInfo asn1EcPublicKeyInfo
-        PublicKey       asn1.BitString
-    }
+    kms "cloud.google.com/go/kms/apiv1"
+    kmspb "google.golang.org/genproto/googleapis/cloud/kms/v1"
+)
 
-    type asn1EcPublicKeyInfo struct {
-        Algorithm  asn1.ObjectIdentifier
-        Parameters asn1.ObjectIdentifier
-    }
+type asn1EcPublicKey struct {
+    EcPublicKeyInfo asn1EcPublicKeyInfo
+    PublicKey       asn1.BitString
+}
 
-	// ctx := context.Background()
-	// client, err := kms.NewKeyManagementClient(ctx)
-    // name := "projects/my-project/locations/asia-southeast1/keyRings/dev-test/cryptoKeys/private-test/cryptoKeyVersions/1"
-	req := &kmspb.GetPublicKeyRequest{
-		Name: name,
-	}
+type asn1EcPublicKeyInfo struct {
+    Algorithm  asn1.ObjectIdentifier
+    Parameters asn1.ObjectIdentifier
+}
 
-	response, err := client.GetPublicKey(ctx, req)
-	if err != nil {
-		log.Fatal(err)
-	}
+// ctx := context.Background()
+// client, err := kms.NewKeyManagementClient(ctx)
+// name := "projects/my-project/locations/asia-southeast1/keyRings/dev-test/cryptoKeys/private-test/cryptoKeyVersions/1"
+req := &kmspb.GetPublicKeyRequest{
+    Name: name,
+}
 
-	block, _ := pem.Decode([]byte(response.Pem))
-	var asn1pubk asn1EcPublicKey
-	_, err = asn1.Unmarshal(block.Bytes, &asn1pubk)
-	if err != nil {
-		log.Fatal(err)
-	}
+response, err := client.GetPublicKey(ctx, req)
+if err != nil {
+    log.Fatal(err)
+}
 
-    publicKeyByte := asn1pubk.PublicKey.Bytes
-```
+block, _ := pem.Decode([]byte(response.Pem))
+var asn1pubk asn1EcPublicKey
+_, err = asn1.Unmarshal(block.Bytes, &asn1pubk)
+if err != nil {
+    log.Fatal(err)
+}
+
+publicKeyByte := asn1pubk.PublicKey.Bytes
+{{</highlight>}}
 
 For the signature, we can directly use hash of keccak256 in the Sha256 field. Then use ASN.1 to get R and S Value.  
 
-```go
-    type asn1EcSig struct {
-        R asn1.RawValue
-        S asn1.RawValue
-    }
-    // txHashBytes := signer.Hash(tx).Bytes()
-    // you can use crypto.Keccak256Hash([]byte("plain text"))
-	req := &kmspb.AsymmetricSignRequest{
-		Name: name,
-		Digest: &kmspb.Digest{
-			Digest: &kmspb.Digest_Sha256{
-				Sha256: txHashBytes,
-			},
-		},
-	}
+{{<highlight go>}}
+type asn1EcSig struct {
+    R asn1.RawValue
+    S asn1.RawValue
+}
+// txHashBytes := signer.Hash(tx).Bytes()
+// you can use crypto.Keccak256Hash([]byte("plain text"))
+req := &kmspb.AsymmetricSignRequest{
+    Name: name,
+    Digest: &kmspb.Digest{
+        Digest: &kmspb.Digest_Sha256{
+            Sha256: txHashBytes,
+        },
+    },
+}
 
-	result, err := client.AsymmetricSign(ctx, req)
-	if err != nil {
-		log.Fatal(err)
-	}
+result, err := client.AsymmetricSign(ctx, req)
+if err != nil {
+    log.Fatal(err)
+}
 
-	var sigAsn1 asn1EcSig
-	_, err = asn1.Unmarshal(result.Signature, &sigAsn1)
-	if err != nil {
-		log.Fatal(err)
-	}
+var sigAsn1 asn1EcSig
+_, err = asn1.Unmarshal(result.Signature, &sigAsn1)
+if err != nil {
+    log.Fatal(err)
+}
 
-	rBytes := sigAsn1.R.Bytes
-    sBytes := sigAsn1.S.Bytes
-```
+rBytes := sigAsn1.R.Bytes
+sBytes := sigAsn1.S.Bytes
+{{</highlight>}}
 
 The S Value from GCP KMS maybe over the half N of secp256k, we need to adjust it to match the Ethereum standard. Then adjust the length of R and S bytes to fit 32 bytes each. The final step is to calculate to V value by recovering the public key. The V value is zero if the recovered public key is match the public key from GCP KMS otherwise V value is one. If you think about different chain for the V value, it will be adjusted by `WithSignature` when you given a different chain id into the `Signer`.
 
-```go
-    var secp256k1N = crypto.S256().Params().N
-    var secp256k1HalfN = new(big.Int).Div(secp256k1N, big.NewInt(2))
-    func adjustSignatureLength(buffer []byte) []byte {
-        buffer = bytes.TrimLeft(buffer, "\x00")
-        for len(buffer) < 32 {
-            zeroBuf := []byte{0}
-            buffer = append(zeroBuf, buffer...)
-        }
-        return buffer
+{{<highlight go>}}
+var secp256k1N = crypto.S256().Params().N
+var secp256k1HalfN = new(big.Int).Div(secp256k1N, big.NewInt(2))
+func adjustSignatureLength(buffer []byte) []byte {
+    buffer = bytes.TrimLeft(buffer, "\x00")
+    for len(buffer) < 32 {
+        zeroBuf := []byte{0}
+        buffer = append(zeroBuf, buffer...)
+    }
+    return buffer
+}
+
+// Adjust S value from signature according to Ethereum standard
+sBigInt := new(big.Int).SetBytes(sBytes)
+if sBigInt.Cmp(secp256k1HalfN) > 0 {
+    sBytes = new(big.Int).Sub(secp256k1N, sBigInt).Bytes()
+}
+
+rsSignature := append(adjustSignatureLength(r), adjustSignatureLength(s)...)
+signature := append(rsSignature, []byte{0}...)
+
+recoveredPublicKeyBytes, err := crypto.Ecrecover(txHashBytes, signature)
+if err != nil {
+    log.Fatal(err)
+}
+
+if hex.EncodeToString(recoveredPublicKeyBytes) != hex.EncodeToString(expectedPublicKeyBytes) {
+    signature = append(rsSignature, []byte{1}...)
+    recoveredPublicKeyBytes, err = crypto.Ecrecover(txHashBytes, signature)
+    if err != nil {
+        log.Fatal(err)
     }
 
-    // Adjust S value from signature according to Ethereum standard
-    sBigInt := new(big.Int).SetBytes(sBytes)
-    if sBigInt.Cmp(secp256k1HalfN) > 0 {
-        sBytes = new(big.Int).Sub(secp256k1N, sBigInt).Bytes()
+    if hex.EncodeToString(recoveredPublicKeyBytes) != hex.EncodeToString(expectedPublicKeyBytes) {
+        log.Fatal(errors.New("can not reconstruct public key from sig"))
     }
-
-    rsSignature := append(adjustSignatureLength(r), adjustSignatureLength(s)...)
-	signature := append(rsSignature, []byte{0}...)
-
-	recoveredPublicKeyBytes, err := crypto.Ecrecover(txHashBytes, signature)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	if hex.EncodeToString(recoveredPublicKeyBytes) != hex.EncodeToString(expectedPublicKeyBytes) {
-		signature = append(rsSignature, []byte{1}...)
-		recoveredPublicKeyBytes, err = crypto.Ecrecover(txHashBytes, signature)
-		if err != nil {
-			log.Fatal(err)
-		}
-
-		if hex.EncodeToString(recoveredPublicKeyBytes) != hex.EncodeToString(expectedPublicKeyBytes) {
-			log.Fatal(errors.New("can not reconstruct public key from sig"))
-		}
-	}
-```
+}
+{{</highlight>}}
 
 ## Generate a raw transaction with signature
 Here is the full example to generate a ethereum transaction.
 
-```go
-    func publicKeyBytesToAddress(publicKey []byte) common.Address {
-        hash := crypto.Keccak256Hash(publicKey[1:])
-        address := hash[12:]
+{{<highlight go>}}
+func publicKeyBytesToAddress(publicKey []byte) common.Address {
+    hash := crypto.Keccak256Hash(publicKey[1:])
+    address := hash[12:]
 
-        return common.HexToAddress(hex.EncodeToString(address))
-    }
+    return common.HexToAddress(hex.EncodeToString(address))
+}
 
-	fromAddress := publicKeyBytesToAddress(publicKeyBytes)
-	client, err := ethclient.Dial("[ethereum node url]")
-	if err != nil {
-		log.Fatal(err)
-	}
+fromAddress := publicKeyBytesToAddress(publicKeyBytes)
+client, err := ethclient.Dial("[ethereum node url]")
+if err != nil {
+    log.Fatal(err)
+}
 
-	value := big.NewInt(1000000000000000000) // in wei (1 eth)
-	gasLimit := uint64(21000)                // in units
-	gasPrice, err := client.SuggestGasPrice(context.Background())
-	if err != nil {
-		log.Fatal(err)
-	}
+value := big.NewInt(1000000000000000000) // in wei (1 eth)
+gasLimit := uint64(21000)                // in units
+gasPrice, err := client.SuggestGasPrice(context.Background())
+if err != nil {
+    log.Fatal(err)
+}
 
-	toAddress := common.HexToAddress("0x4592d8f8d7b001e72cb26a73e4fa1806a51ac79d")
-	nonce, err := client.PendingNonceAt(context.Background(), fromAddress)
-	if err != nil {
-		log.Fatal(err)
-	}
-	tx := types.NewTransaction(nonce, toAddress, value, gasLimit, gasPrice, nil)
-    // chainID := big.NewInt(1) // for mainnet
-    signer := types.LatestSignerForChainID(chainID)
-    signedTx := tx.WithSignature(signer, signature)
-    ts := types.Transactions{signedTx}
-	rawTxBytes, _ := rlp.EncodeToBytes(ts[0])
-	rawTxHex := hex.EncodeToString(rawTxBytes)
-	fmt.Printf("0x%s\n", rawTxHex)
-```
+toAddress := common.HexToAddress("0x4592d8f8d7b001e72cb26a73e4fa1806a51ac79d")
+nonce, err := client.PendingNonceAt(context.Background(), fromAddress)
+if err != nil {
+    log.Fatal(err)
+}
+tx := types.NewTransaction(nonce, toAddress, value, gasLimit, gasPrice, nil)
+// chainID := big.NewInt(1) // for mainnet
+signer := types.LatestSignerForChainID(chainID)
+signedTx := tx.WithSignature(signer, signature)
+ts := types.Transactions{signedTx}
+rawTxBytes, _ := rlp.EncodeToBytes(ts[0])
+rawTxHex := hex.EncodeToString(rawTxBytes)
+fmt.Printf("0x%s\n", rawTxHex)
+{{</highlight>}}
 
 ## Reference
 
