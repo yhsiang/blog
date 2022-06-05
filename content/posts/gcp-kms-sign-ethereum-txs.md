@@ -8,8 +8,8 @@ keywords: [ "web3", "gcp", "kms", "go", "secp256k1", "ethereum" ]
 draft: false
 ---
 
-## What is GCP KMS
-It's a cloud key management service provided by GCP. It supports HSM (hardware security modules) and multiple algorithms to encrypt. You can read more from [here](https://cloud.google.com/security-key-management).
+## What is Google Cloud Key Management Service
+It's a cloud key management service provided by GCP (Google Cloud Platform). It supports HSM (hardware security modules) and multiple algorithms to encrypt. You can read more from [here](https://cloud.google.com/security-key-management). we will only focus on asymmetric signing and secp256k1 algorithm.
 
 ## Generate a private key
 First, we need to generate a private key on GCP KMS. Here are commands we can use to generate. you need to install `gcloud` first. Check [this link](https://cloud.google.com/sdk/docs/install-sdk) to install.
