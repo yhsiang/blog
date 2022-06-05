@@ -22,12 +22,12 @@ First, we need to generate a private key on GCP KMS. Here are commands we can us
 
 `$ gcloud kms keys create private-test --keyring dev-test --location asia-southeast1 --purpose "asymmetric-signing" --protection-level "hsm" --default-algorithm ec-sign-secp256k1-sha256`
 
-We choose `asymmetric-signing` to be our purpose and protection level is hsm. The most important thing is the algorithm is `ec-sign-secp256k1-sha256`. There is one question is why can we use `ec-sign-secp256k1-sha256` to generate a signature in Ethereum. In ethereum, people usually use `keccak256` as the hash algorithm not `sha256`. From this [comment](https://github.com/celo-org/optics-monorepo/discussions/598) we found in the github issues, you can still use `keccak256` to the `sha256` field.
+We choose `asymmetric-signing` to be our purpose and protection level is hsm. The most important thing is the algorithm is `ec-sign-secp256k1-sha256`. Why can we use `ec-sign-secp256k1-sha256` to generate a signature in Ethereum? In ethereum, people usually use `keccak256` as the hash algorithm but not `sha256`. From [this comment](https://github.com/celo-org/optics-monorepo/discussions/598) we found in the github issues, we can still use `keccak256` into the `sha256` field. Even its name is `sha256` but actually it won't know what's the algorithm you use.
 
 ## Verify the signature
-Now we can write some code to verify the signature from GCP KMS. Before you test it, don't forget to generate a key file from GCP. Check [here](https://cloud.google.com/docs/authentication/production) to pass credentials to environment variable.
+Now we can write some code to verify the signature signed from GCP KMS. Before you test it, don't forget to generate a key file from GCP. Check [here](https://cloud.google.com/docs/authentication/production) to pass credentials to environment variable.
 
-When we retrieve the public key from GCP KMS, we need to use the DER-encoded ASN.1 to parse it.
+When we retrieve the public key from GCP KMS, we need to use the DER-encoded ASN.1 to parse it. Especially see those asn1 related types, it's the most important part before we dig into the ethereum compatible signature.
 
 ```go
 import (
@@ -188,3 +188,5 @@ fmt.Printf("0x%s\n", rawTxHex)
 Really appreciate [welthee/go-ethereum-aws-kms-tx-signer](https://github.com/welthee/go-ethereum-aws-kms-tx-signer). lots of implements are borrowed from their code base.
 
 * https://aws.amazon.com/blogs/database/how-to-sign-ethereum-eip-1559-transactions-using-aws-kms/
+* https://goethereumbook.org/signature-verify/
+* https://goethereumbook.org/transaction-raw-create/
