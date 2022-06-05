@@ -1,0 +1,4 @@
+baseURL = "http://blog.yhsiang.dev/"
+languageCode = "en-us"
+title = "Software Development Notes"
+theme = "dimension"
