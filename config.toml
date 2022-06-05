@@ -2,3 +2,7 @@ baseURL = "https://blog.yhsiang.dev/"
 languageCode = "en-us"
 title = "Software Development Notes"
 theme = "dimension"
+[params]
+  # dir name of your main content (default is `content/posts`).
+  # the list of set content will show up on your index page (baseurl).
+  contentTypeName = "posts"
