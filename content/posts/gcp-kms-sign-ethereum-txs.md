@@ -1,18 +1,18 @@
 ---
-title: "Use GCP KMS to sign Ethereum trasactions"
+title: "Use GCP HSM to sign Ethereum trasactions"
 date: 2022-06-05T10:20:53+08:00
 author: LY Cheng
 authorTwitter: lyforever
-tags: [ "Web3", "GCP", "KMS", "Golang", "Ethereum" ]
-keywords: [ "web3", "gcp", "kms", "go", "secp256k1", "ethereum" ]
+tags: [ "Web3", "GCP", "HSM", "Golang", "Ethereum" ]
+keywords: [ "web3", "gcp", "hsm", "go", "secp256k1", "ethereum" ]
 draft: false
 ---
 
-## What is Google Cloud Key Management Service
-It's a cloud key management service provided by GCP (Google Cloud Platform). It supports HSM (hardware security modules) and multiple algorithms to encrypt. You can read more from [here](https://cloud.google.com/security-key-management). we will only focus on asymmetric signing and secp256k1 algorithm.
+## What is GCP HSM
+It's a cloud key management service provided by GCP (Google Cloud Platform). It supports HSM (hardware security modules) and multiple algorithms to encrypt and decrypt. You can read more from [here](https://cloud.google.com/security-key-management). We will only focus on asymmetric signing and secp256k1 algorithm.
 
 ## Generate a private key
-First, we need to generate a private key on GCP KMS. Here are commands we can use to generate. you need to install `gcloud` first. Check [this link](https://cloud.google.com/sdk/docs/install-sdk) to install.
+First, we need to generate a private key on GCP HSM. Here are commands we can use to generate. you need to install `gcloud` first. Check [this link](https://cloud.google.com/sdk/docs/install-sdk) to install.
 
 * Generate keyrings named `dev-test`
 
@@ -25,9 +25,9 @@ First, we need to generate a private key on GCP KMS. Here are commands we can us
 We choose `asymmetric-signing` to be our purpose and protection level is hsm. The most important thing is the algorithm is `ec-sign-secp256k1-sha256`. Why can we use `ec-sign-secp256k1-sha256` to generate a signature in Ethereum? In ethereum, people usually use `keccak256` as the hash algorithm but not `sha256`. From [this comment](https://github.com/celo-org/optics-monorepo/discussions/598) we found in the github issues, we can still use `keccak256` into the `sha256` field. Even its name is `sha256` but actually it won't know what's the algorithm you use.
 
 ## Verify the signature
-Now we can write some code to verify the signature signed from GCP KMS. Before you test it, don't forget to generate a key file from GCP. Check [here](https://cloud.google.com/docs/authentication/production) to pass credentials to environment variable.
+Now we can write some code to verify the signature signed from GCP. Before you test it, don't forget to generate a key file from GCP. Check [here](https://cloud.google.com/docs/authentication/production) to pass credentials to environment variable.
 
-When we retrieve the public key from GCP KMS, we need to use the DER-encoded ASN.1 to parse it. Especially see those asn1 related types, it's the most important part before we dig into the ethereum compatible signature.
+When we retrieve the public key from GCP, we need to use the DER-encoded ASN.1 to parse it. Especially see those asn1 related types, it's the most important part before we dig into the ethereum compatible signature.
 
 ```go
 import (
@@ -103,7 +103,7 @@ rBytes := sigAsn1.R.Bytes
 sBytes := sigAsn1.S.Bytes
 ```
 
-The S Value from GCP KMS maybe over the half N of secp256k, we need to adjust it to match the Ethereum standard. Then adjust the length of R and S bytes to fit 32 bytes each. The final step is to calculate to V value by recovering the public key. The V value is zero if the recovered public key matches the public key from GCP KMS otherwise V value should be one. If you think about different chain for the V value, it will be adjusted by `WithSignature` when you given a different chain id into the `Signer`.
+The S Value from GCP maybe over the half N of secp256k, we need to adjust it to match the Ethereum standard. Then adjust the length of R and S bytes to fit 32 bytes each. The final step is to calculate to V value by recovering the public key. The V value is zero if the recovered public key matches the public key from GCP KMS otherwise V value should be one. If you think about different chain for the V value, it will be adjusted by `WithSignature` when you given a different chain id into the `Signer`.
 
 ```go
 var secp256k1N = crypto.S256().Params().N
@@ -183,6 +183,31 @@ rawTxHex := hex.EncodeToString(rawTxBytes)
 fmt.Printf("0x%s\n", rawTxHex)
 ```
 
+Another one example is to create an EIP-1559 transaction.
+```go
+config, block := params.AllEthashProtocolChanges, params.AllEthashProtocolChanges.LondonBlock
+signer := types.MakeSigner(config, block)
+                                                  // in wei (1 eth)
+gasFeeCap, gasTipCap, gas := big.NewInt(38694000460), big.NewInt(3869400046), uint64(21000)
+
+// you can check the previous example to get these values: nonce, toAddress, value
+tx := types.NewTx(&types.DynamicFeeTx{
+    ChainID:   signer.ChainID(),
+    Nonce:     nonce,
+    GasFeeCap: gasFeeCap,
+    GasTipCap: gasTipCap,
+    Gas:       gas,
+    To:        &toAddress,
+    Value:     value,
+    Data:      nil,
+})
+
+signedTx := tx.WithSignature(signer, signature)
+rawTxBytes, _ := rlp.EncodeToBytes(signedTx)
+rawTxHex := hex.EncodeToString(rawTxBytes[2:])
+fmt.Printf("0x%s\n", rawTxHex)
+```
+
 ## Reference
 
 Really appreciate [welthee/go-ethereum-aws-kms-tx-signer](https://github.com/welthee/go-ethereum-aws-kms-tx-signer). lots of implements are borrowed from their code base.
@@ -190,3 +215,5 @@ Really appreciate [welthee/go-ethereum-aws-kms-tx-signer](https://github.com/wel
 * https://aws.amazon.com/blogs/database/how-to-sign-ethereum-eip-1559-transactions-using-aws-kms/
 * https://goethereumbook.org/signature-verify/
 * https://goethereumbook.org/transaction-raw-create/
+* https://www.youtube.com/watch?v=sE2g--x3SEU
+* https://ethereum.stackexchange.com/questions/124447/eth-sendrawtransaction-with-dynamicfeetx-returns-expected-input-list-for-types
