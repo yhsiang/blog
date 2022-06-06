@@ -187,7 +187,7 @@ Another one example is to create an EIP-1559 transaction.
 ```go
 config, block := params.AllEthashProtocolChanges, params.AllEthashProtocolChanges.LondonBlock
 signer := types.MakeSigner(config, block)
-                                                  // in wei (1 eth)
+
 gasFeeCap, gasTipCap, gas := big.NewInt(38694000460), big.NewInt(3869400046), uint64(21000)
 
 // you can check the previous example to get these values: nonce, toAddress, value
